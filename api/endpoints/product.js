@@ -18,7 +18,13 @@ const {
 // get all products
 router.get('/all', async (req, res) => {
     try {
-        let products = await db.any(`SELECT * FROM products`)
+        let products = await db.any(`
+            SELECT products.product_id, products.name, products.price,
+            product_photos.photo_url
+            FROM products
+            LEFT JOIN product_photos ON products.product_id=product_photos.product_id
+            ORDER BY products.date_created DESC
+        `)
         res.send(products)
     } catch (err) {
         console.log(err)
@@ -28,17 +34,69 @@ router.get('/all', async (req, res) => {
 
 // get recent products
 router.get('/recent', async (req, res) => {
-
+    try {
+        let products = await db.any(`
+            SELECT products.product_id, products.name, products.price,
+            product_photos.photo_url
+            FROM products
+            LEFT JOIN product_photos ON products.product_id=product_photos.product_id
+            ORDER BY products.date_created DESC
+            LIMIT 5
+        `)
+        res.send(products)
+    } catch (err) {
+        console.log(err)
+        res.send(err)
+    }
 })
 
 // get product details
-router.get('/details/:product_id', (req, res) => {
+router.get('/details/:product_id', async (req, res) => {
+    const productId = req.params.product_id
 
+    try {
+        let details = await db.one(`
+            SELECT products.product_id, products.name, products.price,
+            product_photos.photo_url, products.description, products.category,
+            products.date_created, products.user_id
+            FROM products
+            LEFT JOIN product_photos ON products.product_id=product_photos.product_id
+            WHERE products.product_id=$1
+        `, [productId])
+        let tags = await db.many(`
+            SELECT tag_name 
+            FROM tags
+            WHERE tag_id IN (
+                SELECT tag_id
+                FROM product_tags
+                WHERE product_id='55052488-6e73-4863-8e3b-60a376d9cf10'
+            )
+        `, [productId])
+        details['tags'] = tags
+        res.send(details)
+    } catch (err) {
+        console.log(err)
+        res.sendStatus(204)
+    }
 })
 
 // get user products
-router.get('/user/:user_id', async (req, res) => {
+router.get('/user', async (req, res) => {
+    const userId = req.user.user_id
 
+    try {
+        let myProducts = await db.any(`
+            SELECT products.product_id, products.name, products.price,
+            product_photos.photo_url
+            FROM products
+            LEFT JOIN product_photos ON products.product_id=product_photos.product_id
+            WHERE products.user_id=$1
+            ORDER BY products.date_created DESC
+        `, [userId])
+        res.send(myProducts)
+    } catch (err) {
+        res.sendStatus(400)
+    }
 })
 
 // post new product
@@ -86,9 +144,9 @@ router.post('/tags/:tags_list', isAuthenticated, async (req, res) => {
 
     try {
         for (let tag of tags) {
-            let tagId = await db.any(`SELECT tag_id FROM tag WHERE tag_name=$1`, [tag])
+            let tagId = await db.any(`SELECT tag_id FROM tags WHERE tag_name=$1`, [tag])
             if (tagId === undefined || tagId.length === 0) {
-                tagId = await db.any(`INSERT INTO tag(tag_name) VALUES($1) returning tag_id`, [tag])
+                tagId = await db.any(`INSERT INTO tags(tag_name) VALUES($1) returning tag_id`, [tag])
             }
             await db.none(`INSERT INTO product_tags(tag_id, product_id) VALUES($1, $2)`, [tagId[0].tag_id, productId])
         }
@@ -131,9 +189,14 @@ router.put('/confirm/:product_id', isAuthenticated, async (req, res) => {
     const userId = req.user.user_id
 
     try {
-
+        const valid = await db.one(`SELECT is_admin FROM users WHERE user_id=$1`, [userId])
+        if (!valid.is_admin) throw new Error('not an admin')
+        await db.none('UPDATE products SET confirmation=TRUE WHERE product_id=$1', [productId])
+        res.status(204)
+        res.send('confirmed product')
     } catch (err) {
-
+        console.log(err)
+        res.sendStatus(401)
     }
 })
 
