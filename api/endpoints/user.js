@@ -1,5 +1,6 @@
 const express = require('express')
 const router = express.Router()
+const isAuthenticated = require('../authentification/isAuthenticated')
 
 const {
     db
@@ -10,11 +11,10 @@ const {
 } = require('../authentification/passport')
 
 const bcrypt = require('bcryptjs')
-const isAuthenticated = require('../authentification/isAuthenticated')
 const validator = require('../authentification/validate')
 const SALT = 8
 
-// register a user
+// register
 router.post('/register', (req, res, next) => {
     const {
         email,
@@ -38,6 +38,21 @@ router.post('/register', (req, res, next) => {
                 validator.dbInvalidHandler(err, res)
             })
     })
+})
+
+// login
+router.post('/login', authenticate)
+
+// logout
+router.post('/logout', (req, res) => {
+    req.logout()
+    console.log('logged out success')
+    res.send('logged out')
+})
+
+// check if user is admin
+router.get('/admin', isAuthenticated, async (req, res) => {
+
 })
 
 module.exports = router
